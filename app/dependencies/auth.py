@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,7 @@ from app.models.user import User
 security_scheme = HTTPBearer()
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    request: Request,
     db: Session = Depends(get_db)
 ) -> User:
     """Extract and validate user from JWT token."""
@@ -21,9 +21,12 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
+    token = request.cookies.get("auth_token")
+    if not token:
+        raise credentials_exception
 
     try:
-        is_valid, payload = security.verify_token(credentials.credentials)
+        is_valid, payload = security.verify_token(token)
         if not is_valid or not payload:
             raise credentials_exception # auth not found
             
@@ -43,7 +46,7 @@ async def get_current_user(
 async def get_admin_user(
     current_user: User = Depends(get_current_user)
 ) -> User:
-    """Admin checking middleware"""
+    """Check if current user is admin - like Express.js role middleware."""
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

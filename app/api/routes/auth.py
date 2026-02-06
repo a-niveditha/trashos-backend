@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,7 @@ from app.dependencies.auth import get_current_user
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-def register(user_in: UserCreate, db: Session = Depends(get_db)):
+def register(user_in: UserCreate, response: Response, db: Session = Depends(get_db)):
     """Register a new user"""
     
     is_strong, message = security.validate_password_strength(user_in.password) # custom defined func in security
@@ -41,12 +41,17 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     access_token = security.create_access_token(
         subject=user.username, expires_delta=access_token_expires
     )
+
+    response.set_cookie(
+        key="auth_token",
+        value=access_token,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        httponly=True,
+        secure=False,
+        samesite="lax"
+    ) # store session in cookies
     
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    }
+    return user;
 
 
 @router.get("/me", response_model=UserResponse)
@@ -55,7 +60,7 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 @router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), response: Response = None, db: Session = Depends(get_db)):
     
     user = db.query(User).filter(
         (User.username == form_data.username) | (User.email == form_data.username)
@@ -74,9 +79,22 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     access_token = security.create_access_token(
         subject=user.username, expires_delta=access_token_expires
     )
+
+    response.set_cookie(
+        key="auth_token",
+        value=access_token,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        httponly=True,
+        secure=False,
+        samesite="lax"
+    )
     
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    }
+    return user
+
+@router.post("/logout")
+def logout(response: Response):
+    """Clear cookies"""
+    response.delete_cookie(key="auth_token")
+    return {"message": "Successfully logged out!"}
+
+
