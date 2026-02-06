@@ -1,9 +1,15 @@
+from __future__ import annotations
+
 import uuid
 from enum import Enum
+from typing import TYPE_CHECKING
 from sqlalchemy import String, UUID, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.mixins import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.submission import Submission
 
 
 class RoleEnum(Enum):

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.db.session import get_db
-from app.dependencies.auth import get_current_active_user
+from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.models.submission import Submission, SubmissionStatus
 from app.schema.submission import SubmissionCreate, SubmissionUpdate, SubmissionResponse, SubmissionList
@@ -16,14 +16,15 @@ router = APIRouter(prefix="/submissions", tags=["Submissions"])
 @router.post("/", response_model=SubmissionResponse, status_code=status.HTTP_201_CREATED)
 def create_submission(
     submission_data: SubmissionCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-):
-    """Create a new submission (like Express.js POST /submissions)"""
-    
+):  
+    #might've to add route level auth check
     # Create new submission linked to current user
 
     # call to ml function goes here
+
+    #------------------------------------
     submission = Submission(
         user_id=current_user.id,
         image_path_url=submission_data.image_path_url,
@@ -42,10 +43,10 @@ def get_submissions(
     page: int = Query(1, ge=1),
     per_page: int = Query(10, ge=1, le=100),
     status_filter: Optional[SubmissionStatus] = Query(None),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get user's submissions with pagination (like Express.js GET /submissions)"""
+    """Get user's submissions with pagination"""
     
     # Base query for user's submissions
     query = db.query(Submission).filter(Submission.user_id == current_user.id)
@@ -77,7 +78,7 @@ def get_submissions(
 @router.get("/{submission_id}", response_model=SubmissionResponse)
 def get_submission(
     submission_id: UUID,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a specific submission (like Express.js GET /submissions/:id)"""
@@ -95,45 +96,13 @@ def get_submission(
     
     return submission
 
-
-@router.patch("/{submission_id}", response_model=SubmissionResponse)
-def update_submission(
-    submission_id: UUID,
-    update_data: SubmissionUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Update submission (usually called by ML service or admin)"""
-    
-    submission = db.query(Submission).filter(
-        Submission.id == submission_id,
-        Submission.user_id == current_user.id
-    ).first()
-    
-    if not submission:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Submission not found"
-        )
-    
-    # Update fields that are provided
-    update_dict = update_data.model_dump(exclude_unset=True)
-    for field, value in update_dict.items():
-        setattr(submission, field, value)
-    
-    db.commit()
-    db.refresh(submission)
-    
-    return submission
-
-
 @router.delete("/{submission_id}")
 def delete_submission(
     submission_id: UUID,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Delete a submission (like Express.js DELETE /submissions/:id)"""
+    """Delete a submission"""
     
     submission = db.query(Submission).filter(
         Submission.id == submission_id,

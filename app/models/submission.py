@@ -81,8 +81,3 @@ class Submission(Base, TimestampMixin):
     def is_processed(self) -> bool:
         """Check if submission has been processed (classified or failed)"""
         return self.status in [SubmissionStatus.CLASSIFIED, SubmissionStatus.FAILED]
-
-    @property
-    def confidence_percentage(self) -> Optional[float]:
-        """Get ML confidence as percentage"""
-        return self.ml_confidence * 100 if self.ml_confidence is not None else None

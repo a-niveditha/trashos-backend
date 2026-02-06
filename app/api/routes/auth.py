@@ -1,5 +1,4 @@
 from datetime import timedelta
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -9,7 +8,8 @@ from app.db.session import get_db
 from app.core import security
 from app.core.config import settings
 from app.models.user import User
-from app.schema.auth import Token, UserCreate
+from app.schema.auth import Token, UserCreate, UserResponse
+from app.dependencies.auth import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""
     
-    is_strong, message = security.validate_password_strength(user_in.password)
+    is_strong, message = security.validate_password_strength(user_in.password) # custom defined func in security
     if not is_strong:
         raise HTTPException(status_code=400, detail=message)
     
@@ -47,6 +47,12 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     }
+
+
+@router.get("/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    """Get current user profile"""
+    return current_user
 
 @router.post("/login", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

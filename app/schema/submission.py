@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.models.submission import SubmissionStatus
 
 
+# only image_path_url is necessary 
 class SubmissionCreate(BaseModel):
     """Schema for creating a new submission"""
     image_path_url: str = Field(..., min_length=1, max_length=1000)
@@ -19,15 +20,7 @@ class SubmissionCreate(BaseModel):
         return v.strip()
 
 
-class SubmissionUpdate(BaseModel):
-    """Schema for updating submission (usually by ML service)"""
-    classification: Optional[str] = Field(None, max_length=255)
-    resell_value: Optional[Decimal] = Field(None, gt=0)
-    co2_saved: Optional[float] = Field(None, ge=0.0)
-    resell_places: Optional[List[str]] = None
-    model_version: Optional[str] = Field(None, max_length=50)
-    status: Optional[SubmissionStatus] = None
-
+# response to user
 class SubmissionResponse(BaseModel):
     """Schema for submission response"""
     id: uuid.UUID
@@ -45,12 +38,9 @@ class SubmissionResponse(BaseModel):
     class Config:
         from_attributes = True
 
-    @property
-    def confidence_percentage(self) -> Optional[float]:
-        """Get ML confidence as percentage"""
-        return self.ml_confidence * 100 if self.ml_confidence is not None else None
 
 
+# list submissions
 class SubmissionList(BaseModel):
     """Schema for listing submissions with pagination"""
     items: List[SubmissionResponse]
