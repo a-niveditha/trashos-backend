@@ -1,7 +1,7 @@
 import uuid
 from enum import Enum
-from sqlalchemy import String, UUID, Enum as SQLEnum, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, UUID, Enum as SQLEnum
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.mixins import TimestampMixin
 
@@ -43,6 +43,11 @@ class User(Base, TimestampMixin):
         SQLEnum(RoleEnum),
         default=RoleEnum.USER,
         nullable=False
+    )
+
+    # Relationship to Submissions
+    submissions: Mapped[list["Submission"]] = relationship(
+        "Submission", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
