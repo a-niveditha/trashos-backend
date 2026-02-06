@@ -1,9 +1,9 @@
 import uuid
 from enum import Enum
-from sqlalchemy import String, UUID, Enum as SQLEnum
+from sqlalchemy import String, UUID, Enum as SQLEnum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
-from app.models.mixins import TimestampMixin  # Fixed import typo if any
+from app.models.mixins import TimestampMixin
 
 
 class RoleEnum(Enum):
@@ -36,8 +36,6 @@ class User(Base, TimestampMixin):
 
     password_hash: Mapped[str] = mapped_column(
         String(255),
-        unique=False,  
-        index=False,  
         nullable=False
     )
 
@@ -46,6 +44,7 @@ class User(Base, TimestampMixin):
         default=RoleEnum.USER,
         nullable=False
     )
-    
+
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email}, role={self.role})>"
+
