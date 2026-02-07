@@ -2,36 +2,43 @@ import torch
 import timm
 from torchvision import transforms
 from PIL import Image
-from ultralytics import YOLO
 
 
 MODEL_PATHS = {
     # model2.pt is a timm EfficientNet-B2 state_dict (classification)
-    'model1': 'app/utils/model2.pt',
-    # model1.pt is a YOLO detection checkpoint (material detection)
-    'model2': 'app/utils/model1.pt',
+    'model_major': 'app/utils/model_major.pt',
+    # model1.pt is a timm EfficientNet-B2 state_dict (material detection)
+    'model_subclass': 'app/utils/model_subclass.pt',
 }
 CATEGORIES = {
-    'model1': ['organic', 'inorganic', 'hazardous'],
-    'model2': ['Aluminum_Cans', 'PET_bottle', 'carton_box', 'carton_drink']
+    'model_major': ['inorganic', 'hazardous', 'organic'],
+    'model_subclass': ['Aluminum_Cans', 'PET_bottle', 'carton_box', 'carton_drink']
 }
 
 #LOAD MODELS
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Model 1: timm EfficientNet-B2 for waste classification
-model1 = timm.create_model('efficientnet_b2', pretrained=False, num_classes=len(CATEGORIES['model1']))
-state_dict = torch.load(MODEL_PATHS['model1'], map_location=device, weights_only=False)
+model_major = timm.create_model('efficientnet_b2', pretrained=False, num_classes=len(CATEGORIES['model_major']))
+state_dict = torch.load(MODEL_PATHS['model_major'], map_location=device, weights_only=False)
 # If checkpoint has more classes than categories, only load matching weights
-if state_dict['classifier.weight'].shape[0] != len(CATEGORIES['model1']):
-    state_dict['classifier.weight'] = state_dict['classifier.weight'][:len(CATEGORIES['model1'])]
-    state_dict['classifier.bias'] = state_dict['classifier.bias'][:len(CATEGORIES['model1'])]
-model1.load_state_dict(state_dict)
-model1 = model1.to(device)
-model1.eval()
+if state_dict['classifier.weight'].shape[0] != len(CATEGORIES['model_major']):
+    state_dict['classifier.weight'] = state_dict['classifier.weight'][:len(CATEGORIES['model_major'])]
+    state_dict['classifier.bias'] = state_dict['classifier.bias'][:len(CATEGORIES['model_major'])]
+model_major.load_state_dict(state_dict)
+model_major = model_major.to(device)
+model_major.eval()
 
 # Model 2: YOLO detection for material types
-model2 = YOLO(MODEL_PATHS['model2'])
+model_subclass = timm.create_model('efficientnet_b2', pretrained=False, num_classes=len(CATEGORIES['model_subclass']))
+state_dict = torch.load(MODEL_PATHS['model_subclass'], map_location=device, weights_only=False)
+# If checkpoint has more classes than categories, only load matching weights
+if state_dict['classifier.weight'].shape[0] != len(CATEGORIES['model_subclass']):
+    state_dict['classifier.weight'] = state_dict['classifier.weight'][:len(CATEGORIES['model_subclass'])]
+    state_dict['classifier.bias'] = state_dict['classifier.bias'][:len(CATEGORIES['model_subclass'])]
+model_subclass.load_state_dict(state_dict)
+model_subclass = model_subclass.to(device)
+model_subclass.eval()
 
 # Image preprocessing for timm model
 transform = transforms.Compose([
@@ -60,7 +67,7 @@ def predict_model_1(image_path: str, model, categories: list):
     
     class_id = int(predicted.item())
     result = {
-        'category': categories[class_id] if class_id < len(categories) else 'unknown',
+        'category': categories[class_id], 
         'confidence': float(confidence.item()),
         'class_id': class_id
     }
@@ -70,47 +77,31 @@ def predict_model_1(image_path: str, model, categories: list):
 
 def predict_model_2(image_path: str, model, categories: list) -> dict:
     """
-    Predict material type using YOLO v8
+    
     Returns the best detection (highest confidence)
     """
-    print(f"[DEBUG] Model 2: Running YOLO detection on {image_path}")
-    # Run prediction
-    results = model2.predict(image_path, conf=0.25, verbose=False)
+    print(f"[DEBUG] Model 1: Loading image from {image_path}")
+    img = Image.open(image_path).convert('RGB')
+    print(f"[DEBUG] Model 1: Image loaded, size={img.size}")
     
-    print(f"[DEBUG] Model 2: Detected {len(results[0].boxes)} objects")
-    # Check if any objects detected
-    if len(results[0].boxes) > 0:
-        # Get box with highest confidence
-        confidences = results[0].boxes.conf.cpu().numpy()
-        best_idx = confidences.argmax()
-        
-        best_box = results[0].boxes[best_idx]
-        class_id = int(best_box.cls.item())
-        confidence = float(best_box.conf.item())
-        category = CATEGORIES['model2'][class_id]
-        
-        # Get bounding box coordinates [x1, y1, x2, y2]
-        bbox = best_box.xyxy[0].cpu().numpy().tolist()
+    img_tensor = transform(img).unsqueeze(0).to(device)
+    print(f"[DEBUG] Model 1: Image preprocessed, tensor shape={img_tensor.shape}")
+    
+    with torch.no_grad():
+        output = model(img_tensor)
+        probabilities = torch.softmax(output, dim=1)
+        confidence, predicted = probabilities.max(1)
+    
+    class_id = int(predicted.item())
+    result = {
+        'category': categories[class_id],
+        'confidence': float(confidence.item()),
+        'class_id': class_id
+    }
+    print(f"[DEBUG] Model 2: Prediction complete - {result}")
+    return result
 
-        result = {
-            'category': category,
-            'confidence': confidence,
-            'class_id': class_id,
-            'bbox': bbox,
-            'num_detections': len(results[0].boxes)
-        }
-        print(f"[DEBUG] Model 2: Best detection - {result}")
-        return result
-    else:
-        # No detection
-        print(f"[DEBUG] Model 2: No objects detected")
-        return {
-            'category': None,
-            'confidence': 0.0,
-            'class_id': None,
-            'bbox': None,
-            'num_detections': 0
-        }
+
 
 # ============================================
 # RESELL VALUE CALCULATION
@@ -179,7 +170,7 @@ def predict_waste_classification(image_path: str) -> dict:
     
     # Step 1: Classify as organic/inorganic/hazardous
     print(f"[DEBUG] Step 1: Running waste classification...")
-    result1 = predict_model_1(image_path, model1, CATEGORIES['model1'])
+    result1 = predict_model_1(image_path, model_major, CATEGORIES['model_major'])
     
     classification = result1['category']
     confidence = result1['confidence']
@@ -191,10 +182,10 @@ def predict_waste_classification(image_path: str) -> dict:
     
     if classification == 'inorganic':
         print(f"[DEBUG] Step 2: Detected inorganic waste, running material detection...")
-        result2 = predict_model_2(image_path, model2, CATEGORIES['model2'])
+        result2 = predict_model_2(image_path, model_subclass, CATEGORIES['model_subclass'])
         material_type = result2['category']
         material_confidence = result2['confidence']
-        print(f"[DEBUG] Step 2 result: material_type='{material_type}', confidence={material_confidence:.4f if material_confidence else 0}")
+        print(f"[DEBUG] Step 2 result: material_type='{material_type}', confidence={(material_confidence if material_confidence else 0):.4f}")
     else:
         print(f"[DEBUG] Step 2: Skipped (classification is '{classification}', not inorganic)")
     
