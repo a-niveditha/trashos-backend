@@ -36,41 +36,46 @@ def create_submission(
     file_url = f"/api/submissions/files/{unique_filename}"
     
     try:
+        # Write the uploaded file to disk
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-            # create initial submission record
-            submission = Submission(
-                user_id=current_user.id,
-                image_path_url=file_url,
-                status=SubmissionStatus.PENDING
-            )
+        # Create initial submission record
+        submission = Submission(
+            user_id=current_user.id,
+            image_path_url=file_url,
+            status=SubmissionStatus.PENDING
+        )
 
-            db.add(submission)
+        db.add(submission)
+        db.commit()
+        db.refresh(submission)
+
+        # Process with ML models (after file is fully written and closed)
+        try:
+            ml_results = process_with_ml_model(str(file_path))
+
+            submission.classification = ml_results.get("classification")
+            submission.confidence = ml_results.get("confidence")
+            submission.material_type = ml_results.get("material_type")
+            submission.recyclable = ml_results.get("recyclable")
+            submission.resell_value = ml_results.get("resell_value")
+            submission.co2_saved = ml_results.get("co2_saved")
+            submission.resell_places = ml_results.get("resell_places")
+            submission.model_version = ml_results.get("model_version")
+            submission.status = SubmissionStatus.CLASSIFIED
+        
             db.commit()
             db.refresh(submission)
 
-            try:
-                ml_results=process_with_ml_model(str(file_path))
+        except Exception as ml_error:
+            submission.status = SubmissionStatus.FAILED
+            db.commit()
+            db.refresh(submission)
 
-                submission.classification = ml_results.get("classification")
-                submission.resell_value = ml_results.get("resell_value")
-                submission.co2_saved = ml_results.get("co2_saved")
-                submission.resell_places = ml_results.get("resell_places")
-                submission.model_version = ml_results.get("model_version")
-                submission.status = SubmissionStatus.CLASSIFIED
-            
-                db.commit()
-                db.refresh(submission)
+            print(f"ML processing failed: {ml_error}")
 
-            except Exception as ml_error:
-                submission.status = SubmissionStatus.FAILED
-                db.commit()
-                db.refresh(submission)
-
-                print(f"ML processing failed: {ml_error}")
-
-            return submission
+        return submission
         
     except Exception as e:
         if file_path.exists():

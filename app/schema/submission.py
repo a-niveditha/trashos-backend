@@ -27,6 +27,9 @@ class SubmissionResponse(BaseModel):
     user_id: uuid.UUID
     image_path_url: str
     classification: Optional[str] = None
+    confidence: Optional[float] = None
+    material_type: Optional[str] = None
+    recyclable: Optional[bool] = None
     resell_value: Optional[Decimal] = None
     co2_saved: Optional[float] = None
     resell_places: Optional[List[str]] = None

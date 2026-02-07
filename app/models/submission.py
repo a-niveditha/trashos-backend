@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal
 from enum import Enum
 from typing import Optional
-from sqlalchemy import String, UUID, Enum as SQLEnum, Numeric, Float, ForeignKey, JSON, Text
+from sqlalchemy import Boolean, String, UUID, Enum as SQLEnum, Numeric, Float, ForeignKey, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.mixins import TimestampMixin
@@ -47,8 +47,23 @@ class Submission(Base, TimestampMixin):
         nullable=True
     )
 
+    confidence: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True
+    )
+
+    material_type: Mapped[Optional[str]] = mapped_column(
+        String(255),
+        nullable=True
+    )
+
+    recyclable: Mapped[Optional[bool]] = mapped_column(
+        Boolean,
+        nullable=True
+    )
+
     co2_saved: Mapped[Optional[float]] = mapped_column(
-        Float,  # kg of CO2 saved
+        Float,  # grams of CO2 saved
         nullable=True
     )
 
