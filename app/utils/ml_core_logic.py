@@ -2,13 +2,13 @@ import torch
 import timm
 from torchvision import transforms
 from PIL import Image
+from ultralytics import YOLO
 
 
 MODEL_PATHS = {
     # model2.pt is a timm EfficientNet-B2 state_dict (classification)
     'model_major': 'app/utils/model_major.pt',
-    # model1.pt is a timm EfficientNet-B2 state_dict (material detection)
-    'model_subclass': 'app/utils/model_subclass.pt',
+    'model_subclass': 'app/utils/model2.pt',
 }
 CATEGORIES = {
     'model_major': ['inorganic', 'hazardous', 'organic'],
@@ -30,15 +30,21 @@ model_major = model_major.to(device)
 model_major.eval()
 
 # Model 2: YOLO detection for material types
-model_subclass = timm.create_model('efficientnet_b2', pretrained=False, num_classes=len(CATEGORIES['model_subclass']))
-state_dict = torch.load(MODEL_PATHS['model_subclass'], map_location=device, weights_only=False)
-# If checkpoint has more classes than categories, only load matching weights
-if state_dict['classifier.weight'].shape[0] != len(CATEGORIES['model_subclass']):
-    state_dict['classifier.weight'] = state_dict['classifier.weight'][:len(CATEGORIES['model_subclass'])]
-    state_dict['classifier.bias'] = state_dict['classifier.bias'][:len(CATEGORIES['model_subclass'])]
-model_subclass.load_state_dict(state_dict)
-model_subclass = model_subclass.to(device)
-model_subclass.eval()
+# In ml_core_logic.py, replace the YOLO loading with:
+
+try:
+    # Try loading as YOLO model
+    model_subclass = YOLO(MODEL_PATHS['model_subclass'])
+except KeyError:
+    # If it fails, it's probably saved from ultralytics training incorrectly
+    # Try loading the weights manually
+    from ultralytics import YOLO
+    model_subclass = YOLO('yolov8n.pt')  # Start with base model
+    
+    # Load your custom weights
+    checkpoint = torch.load(MODEL_PATHS['model_subclass'], map_location=device)
+    model_subclass.model.load_state_dict(checkpoint)
+
 
 # Image preprocessing for timm model
 transform = transforms.Compose([
@@ -80,27 +86,26 @@ def predict_model_2(image_path: str, model, categories: list) -> dict:
     
     Returns the best detection (highest confidence)
     """
-    print(f"[DEBUG] Model 1: Loading image from {image_path}")
-    img = Image.open(image_path).convert('RGB')
-    print(f"[DEBUG] Model 1: Image loaded, size={img.size}")
-    
-    img_tensor = transform(img).unsqueeze(0).to(device)
-    print(f"[DEBUG] Model 1: Image preprocessed, tensor shape={img_tensor.shape}")
-    
-    with torch.no_grad():
-        output = model(img_tensor)
-        probabilities = torch.softmax(output, dim=1)
-        confidence, predicted = probabilities.max(1)
-    
-    class_id = int(predicted.item())
-    result = {
-        'category': categories[class_id],
-        'confidence': float(confidence.item()),
-        'class_id': class_id
-    }
-    print(f"[DEBUG] Model 2: Prediction complete - {result}")
-    return result
-
+    results = model.predict(image_path, conf = 0.25, verbose = False)
+    if len(results[0].boxes) > 0:
+        confidences = results[0].boxes.conf.cpu().numpy()
+        best_idx = confidences.argmax()
+        best_confidence = confidences[best_idx]
+        class_id = int(results[0].boxes.cls[best_idx].cpu().numpy())
+        result = {
+            'category': categories[class_id], 
+            'confidence': float(best_confidence),
+            'class_id': class_id
+        }
+        print(f"[DEBUG] Model 2: Prediction complete - {result}")
+        return result
+    else:
+        print(f"[DEBUG] Model 2: No detections found for image {image_path}")
+        return {
+            'category': 'unknown',
+            'confidence': 0.0,
+            'class_id': -1
+        }
 
 
 # ============================================
